@@ -3,6 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import { n } from '../../../../../../../base/browser/dom.js';
+import { IMouseEvent } from '../../../../../../../base/browser/mouseEvent.js';
+import { Emitter } from '../../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../../base/common/lifecycle.js';
 import { constObservable, derived, derivedObservableWithCache, IObservable } from '../../../../../../../base/common/observable.js';
 import { asCssVariable } from '../../../../../../../platform/theme/common/colorUtils.js';
@@ -12,13 +14,16 @@ import { Point } from '../../../../../../browser/point.js';
 import { LineRange } from '../../../../../../common/core/lineRange.js';
 import { Position } from '../../../../../../common/core/position.js';
 import { Range } from '../../../../../../common/core/range.js';
-import { IInlineEditsView, IInlineEditsViewHost } from '../inlineEditsViewInterface.js';
+import { IInlineEditsView, InlineEditTabAction } from '../inlineEditsViewInterface.js';
 import { InlineEditWithChanges } from '../inlineEditWithChanges.js';
 import { getOriginalBorderColor, originalBackgroundColor } from '../theme.js';
 import { createRectangle, getPrefixTrim, mapOutFalsy, maxContentWidthInRange } from '../utils/utils.js';
 
 export class InlineEditsDeletionView extends Disposable implements IInlineEditsView {
 	private readonly _editorObs = observableCodeEditor(this._editor);
+
+	private readonly _onDidClick = this._register(new Emitter<IMouseEvent>());
+	readonly onDidClick = this._onDidClick.event;
 
 	constructor(
 		private readonly _editor: ICodeEditor,
@@ -27,7 +32,7 @@ export class InlineEditsDeletionView extends Disposable implements IInlineEditsV
 			originalRange: LineRange;
 			deletions: Range[];
 		} | undefined>,
-		private readonly _host: IInlineEditsViewHost,
+		private readonly _tabAction: IObservable<InlineEditTabAction>,
 	) {
 		super();
 
@@ -146,7 +151,7 @@ export class InlineEditsDeletionView extends Disposable implements IInlineEditsV
 			{ hideLeft: layoutInfo.horizontalScrollOffset !== 0 }
 		);
 
-		const originalBorderColor = getOriginalBorderColor(this._host.tabAction).read(reader);
+		const originalBorderColor = getOriginalBorderColor(this._tabAction).read(reader);
 
 		return [
 			n.svgElem('path', {

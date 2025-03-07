@@ -106,11 +106,11 @@ export interface ITreeSitterTokenizationSupport {
 	 * exposed for testing
 	 */
 	getTokensInRange(textModel: ITextModel, range: Range, rangeStartOffset: number, rangeEndOffset: number): TokenUpdate[] | undefined;
-	tokenizeEncoded(lineNumber: number, textModel: model.ITextModel): Uint32Array | undefined;
+	tokenizeEncoded(lineNumber: number, textModel: model.ITextModel): void;
 	captureAtPosition(lineNumber: number, column: number, textModel: model.ITextModel): QueryCapture[];
 	captureAtPositionTree(lineNumber: number, column: number, tree: Parser.Tree): QueryCapture[];
 	onDidChangeTokens: Event<{ textModel: model.ITextModel; changes: IModelTokensChangedEvent }>;
-	onDidCompleteFirstTokenization: Event<{ textModel: model.ITextModel }>;
+	onDidChangeBackgroundTokenization: Event<{ textModel: model.ITextModel }>;
 	tokenizeEncodedInstrumented(lineNumber: number, textModel: model.ITextModel): { result: Uint32Array; captureTime: number; metadataTime: number } | undefined;
 }
 
@@ -789,6 +789,7 @@ export interface InlineCompletion {
 
 	/**
 	 * Is called the first time an inline completion is shown.
+	 * @deprecated. Use `onDidShow` of the provider instead.
 	*/
 	readonly shownCommand?: Command;
 
@@ -799,6 +800,7 @@ export interface InlineCompletion {
 	readonly completeBracketPairs?: boolean;
 
 	readonly isInlineEdit?: boolean;
+	readonly showInlineEditMenu?: boolean;
 
 	readonly showRange?: IRange;
 

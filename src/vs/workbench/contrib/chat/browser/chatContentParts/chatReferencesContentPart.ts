@@ -38,7 +38,7 @@ import { ResourceContextKey } from '../../../../common/contextkeys.js';
 import { SETTINGS_AUTHORITY } from '../../../../services/preferences/common/preferences.js';
 import { createFileIconThemableTreeContainerScope } from '../../../files/browser/views/explorerView.js';
 import { ExplorerFolderContext } from '../../../files/common/files.js';
-import { chatEditingWidgetFileReadonlyContextKey, chatEditingWidgetFileStateContextKey, WorkingSetEntryState } from '../../common/chatEditingService.js';
+import { chatEditingWidgetFileStateContextKey, WorkingSetEntryState } from '../../common/chatEditingService.js';
 import { ChatResponseReferencePartStatusKind, IChatContentReference, IChatWarningMessage } from '../../common/chatService.js';
 import { IChatVariablesService } from '../../common/chatVariables.js';
 import { IChatRendererContent, IChatResponseViewModel } from '../../common/chatViewModel.js';
@@ -53,7 +53,6 @@ export interface IChatReferenceListItem extends IChatContentReference {
 	description?: string;
 	state?: WorkingSetEntryState;
 	excluded?: boolean;
-	isMarkedReadonly?: boolean;
 }
 
 export type IChatCollapsibleListItem = IChatReferenceListItem | IChatWarningMessage;
@@ -435,25 +434,15 @@ class CollapsibleListRenderer implements IListRenderer<IChatCollapsibleListItem,
 			} else if (matchesSomeScheme(uri, Schemas.mailto, Schemas.http, Schemas.https)) {
 				templateData.label.setResource({ resource: uri, name: uri.toString() }, { icon: icon ?? Codicon.globe, title: data.options?.status?.description ?? data.title ?? uri.toString(), strikethrough: data.excluded, extraClasses });
 			} else {
-				if (data.state === WorkingSetEntryState.Transient || data.state === WorkingSetEntryState.Suggested) {
-					templateData.label.setResource(
-						{
-							resource: uri,
-							name: basenameOrAuthority(uri),
-							description: data.description ?? localize('chat.openEditor', 'Open Editor'),
-							range: 'range' in reference ? reference.range : undefined,
-						}, { icon, title: data.options?.status?.description ?? data.title, italic: data.state === WorkingSetEntryState.Suggested, strikethrough: data.excluded, extraClasses });
-				} else {
-					templateData.label.setFile(uri, {
-						fileKind: FileKind.FILE,
-						// Should not have this live-updating data on a historical reference
-						fileDecorations: undefined,
-						range: 'range' in reference ? reference.range : undefined,
-						title: data.options?.status?.description ?? data.title,
-						strikethrough: data.excluded,
-						extraClasses
-					});
-				}
+				templateData.label.setFile(uri, {
+					fileKind: FileKind.FILE,
+					// Should not have this live-updating data on a historical reference
+					fileDecorations: undefined,
+					range: 'range' in reference ? reference.range : undefined,
+					title: data.options?.status?.description ?? data.title,
+					strikethrough: data.excluded,
+					extraClasses
+				});
 			}
 		}
 
@@ -485,7 +474,6 @@ class CollapsibleListRenderer implements IListRenderer<IChatCollapsibleListItem,
 				if (data.state !== undefined) {
 					chatEditingWidgetFileStateContextKey.bindTo(templateData.contextKeyService).set(data.state);
 				}
-				chatEditingWidgetFileReadonlyContextKey.bindTo(templateData.contextKeyService).set(!!data.isMarkedReadonly);
 			}
 		}
 	}

@@ -3,9 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { n, ObserverNodeWithElement } from '../../../../../../../base/browser/dom.js';
+import { getWindow, n, ObserverNodeWithElement } from '../../../../../../../base/browser/dom.js';
+import { IMouseEvent, StandardMouseEvent } from '../../../../../../../base/browser/mouseEvent.js';
+import { Emitter } from '../../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../../base/common/lifecycle.js';
-import { constObservable, derived, observableValue } from '../../../../../../../base/common/observable.js';
+import { constObservable, derived, IObservable, observableValue } from '../../../../../../../base/common/observable.js';
 import { editorBackground, editorHoverForeground, scrollbarShadow } from '../../../../../../../platform/theme/common/colorRegistry.js';
 import { asCssVariable } from '../../../../../../../platform/theme/common/colorUtils.js';
 import { ObservableCodeEditor } from '../../../../../../browser/observableCodeEditor.js';
@@ -20,13 +22,16 @@ import { SingleTextEdit } from '../../../../../../common/core/textEdit.js';
 import { ILanguageService } from '../../../../../../common/languages/language.js';
 import { LineTokens } from '../../../../../../common/tokens/lineTokens.js';
 import { TokenArray } from '../../../../../../common/tokens/tokenArray.js';
-import { IInlineEditsView, IInlineEditsViewHost } from '../inlineEditsViewInterface.js';
+import { IInlineEditsView, InlineEditTabAction } from '../inlineEditsViewInterface.js';
 import { getModifiedBorderColor, modifiedChangedTextOverlayColor, originalChangedTextOverlayColor, replacementViewBackground } from '../theme.js';
 import { mapOutFalsy, rectToProps } from '../utils/utils.js';
 
 export class InlineEditsWordReplacementView extends Disposable implements IInlineEditsView {
 
 	public static MAX_LENGTH = 100;
+
+	private readonly _onDidClick = this._register(new Emitter<IMouseEvent>());
+	readonly onDidClick = this._onDidClick.event;
 
 	private readonly _start = this._editor.observePosition(constObservable(this._edit.range.getStartPosition()), this._store);
 	private readonly _end = this._editor.observePosition(constObservable(this._edit.range.getEndPosition()), this._store);
@@ -42,7 +47,7 @@ export class InlineEditsWordReplacementView extends Disposable implements IInlin
 		/** Must be single-line in both sides */
 		private readonly _edit: SingleTextEdit,
 		private readonly _innerEdits: SingleTextEdit[],
-		private readonly _host: IInlineEditsViewHost,
+		private readonly _tabAction: IObservable<InlineEditTabAction>,
 		@ILanguageService private readonly _languageService: ILanguageService,
 	) {
 		super();
@@ -157,7 +162,7 @@ export class InlineEditsWordReplacementView extends Disposable implements IInlin
 
 			const edits = layoutProps.innerEdits.map(edit => ({ modified: edit.modified.translateX(-contentLeft), original: edit.original.translateX(-contentLeft) }));
 
-			const modifiedBorderColor = getModifiedBorderColor(this._host.tabAction).read(reader);
+			const modifiedBorderColor = getModifiedBorderColor(this._tabAction).read(reader);
 
 			return [
 				n.div({
@@ -181,7 +186,10 @@ export class InlineEditsWordReplacementView extends Disposable implements IInlin
 							cursor: 'pointer',
 							pointerEvents: 'auto',
 						},
-						onmouseup: () => this._host.accept(),
+						onmousedown: e => {
+							e.preventDefault(); // This prevents that the editor loses focus
+						},
+						onmouseup: (e) => this._onDidClick.fire(new StandardMouseEvent(getWindow(e), e)),
 						obsRef: (elem) => {
 							this._hoverableElement.set(elem, undefined);
 						}

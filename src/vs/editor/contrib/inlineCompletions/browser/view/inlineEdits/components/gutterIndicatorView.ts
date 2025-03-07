@@ -6,9 +6,10 @@
 import { n, trackFocus } from '../../../../../../../base/browser/dom.js';
 import { renderIcon } from '../../../../../../../base/browser/ui/iconLabel/iconLabels.js';
 import { Codicon } from '../../../../../../../base/common/codicons.js';
+import { BugIndicatingError } from '../../../../../../../base/common/errors.js';
 import { Disposable, DisposableStore, toDisposable } from '../../../../../../../base/common/lifecycle.js';
 import { IObservable, ISettableObservable, constObservable, derived, observableFromEvent, observableValue, runOnChange } from '../../../../../../../base/common/observable.js';
-import { debouncedObservable2 } from '../../../../../../../base/common/observableInternal/utils.js';
+import { debouncedObservable } from '../../../../../../../base/common/observableInternal/utils.js';
 import { IAccessibilityService } from '../../../../../../../platform/accessibility/common/accessibility.js';
 import { IHoverService } from '../../../../../../../platform/hover/browser/hover.js';
 import { IInstantiationService } from '../../../../../../../platform/instantiation/common/instantiation.js';
@@ -21,19 +22,24 @@ import { EditorOption } from '../../../../../../common/config/editorOptions.js';
 import { LineRange } from '../../../../../../common/core/lineRange.js';
 import { OffsetRange } from '../../../../../../common/core/offsetRange.js';
 import { StickyScrollController } from '../../../../../stickyScroll/browser/stickyScrollController.js';
-import { InlineCompletionsModel } from '../../../model/inlineCompletionsModel.js';
-import { IInlineEditsViewHost } from '../inlineEditsViewInterface.js';
+import { IInlineEditModel, InlineEditTabAction } from '../inlineEditsViewInterface.js';
 import { inlineEditIndicatorBackground, inlineEditIndicatorPrimaryBackground, inlineEditIndicatorPrimaryForeground, inlineEditIndicatorSecondaryBackground, inlineEditIndicatorSecondaryForeground, inlineEditIndicatorsuccessfulBackground, inlineEditIndicatorsuccessfulForeground } from '../theme.js';
-import { InlineEditTabAction, mapOutFalsy, rectToProps } from '../utils/utils.js';
+import { mapOutFalsy, rectToProps } from '../utils/utils.js';
 import { GutterIndicatorMenuContent } from './gutterIndicatorMenu.js';
 
 export class InlineEditsGutterIndicator extends Disposable {
+
+	private get model() {
+		const model = this._model.get();
+		if (!model) { throw new BugIndicatingError('Inline Edit Model not available'); }
+		return model;
+	}
+
 	constructor(
 		private readonly _editorObs: ObservableCodeEditor,
 		private readonly _originalRange: IObservable<LineRange | undefined>,
 		private readonly _verticalOffset: IObservable<number>,
-		private readonly _model: IObservable<InlineCompletionsModel | undefined>,
-		private readonly _host: IInlineEditsViewHost,
+		private readonly _model: IObservable<IInlineEditModel | undefined>,
 		private readonly _isHoveringOverInlineEdit: IObservable<boolean>,
 		private readonly _focusIsInMenu: ISettableObservable<boolean>,
 		@IHoverService private readonly _hoverService: HoverService,
@@ -50,7 +56,7 @@ export class InlineEditsGutterIndicator extends Disposable {
 		}));
 
 		if (!accessibilityService.isMotionReduced()) {
-			const debouncedIsHovering = debouncedObservable2(this._isHoveringOverInlineEdit, 100);
+			const debouncedIsHovering = debouncedObservable(this._isHoveringOverInlineEdit, 100);
 			this._register(runOnChange(debouncedIsHovering, (isHovering) => {
 				if (!isHovering) {
 					return;
@@ -121,18 +127,19 @@ export class InlineEditsGutterIndicator extends Disposable {
 	});
 
 	private readonly _iconRef = n.ref<HTMLDivElement>();
-	private _hoverVisible: boolean = false;
+	private readonly _hoverVisible = observableValue(this, false);
+	public readonly isHoverVisible: IObservable<boolean> = this._hoverVisible;
 	private readonly _isHoveredOverIcon = observableValue(this, false);
 
 	private _showHover(): void {
-		if (this._hoverVisible) {
+		if (this._hoverVisible.get()) {
 			return;
 		}
 
 		const disposableStore = new DisposableStore();
 		const content = disposableStore.add(this._instantiationService.createInstance(
 			GutterIndicatorMenuContent,
-			this._host,
+			this.model,
 			(focusEditor) => {
 				if (focusEditor) {
 					this._editorObs.editor.focus();
@@ -152,9 +159,9 @@ export class InlineEditsGutterIndicator extends Disposable {
 			content: content.element,
 		}) as HoverWidget | undefined;
 		if (h) {
-			this._hoverVisible = true;
+			this._hoverVisible.set(true, undefined);
 			disposableStore.add(h.onDispose(() => {
-				this._hoverVisible = false;
+				this._hoverVisible.set(false, undefined);
 				disposableStore.dispose();
 			}));
 		} else {
@@ -162,17 +169,21 @@ export class InlineEditsGutterIndicator extends Disposable {
 		}
 	}
 
+	private readonly _tabAction = derived(this, reader => {
+		const model = this._model.read(reader);
+		if (!model) { return InlineEditTabAction.Inactive; }
+		return model.tabAction.read(reader);
+	});
+
 	private readonly _indicator = n.div({
 		class: 'inline-edits-view-gutter-indicator',
 		onclick: () => {
-			const model = this._model.get();
-			if (!model) { return; }
 			const docked = this._layout.map(l => l && l.docked).get();
 			this._editorObs.editor.focus();
 			if (docked) {
-				model.accept();
+				this.model.accept();
 			} else {
-				model.jump();
+				this.model.jump();
 			}
 		},
 		tabIndex: 0,
@@ -202,14 +213,14 @@ export class InlineEditsGutterIndicator extends Disposable {
 				cursor: 'pointer',
 				zIndex: '1000',
 				position: 'absolute',
-				backgroundColor: this._host.tabAction.map(v => {
+				backgroundColor: this._tabAction.map(v => {
 					switch (v) {
 						case InlineEditTabAction.Inactive: return asCssVariable(inlineEditIndicatorSecondaryBackground);
 						case InlineEditTabAction.Jump: return asCssVariable(inlineEditIndicatorPrimaryBackground);
 						case InlineEditTabAction.Accept: return asCssVariable(inlineEditIndicatorsuccessfulBackground);
 					}
 				}),
-				['--vscodeIconForeground' as any]: this._host.tabAction.map(v => {
+				['--vscodeIconForeground' as any]: this._tabAction.map(v => {
 					switch (v) {
 						case InlineEditTabAction.Inactive: return asCssVariable(inlineEditIndicatorSecondaryForeground);
 						case InlineEditTabAction.Jump: return asCssVariable(inlineEditIndicatorPrimaryForeground);
@@ -238,7 +249,7 @@ export class InlineEditsGutterIndicator extends Disposable {
 					justifyContent: 'center',
 				}
 			}, [
-				this._host.tabAction.map(v => v === InlineEditTabAction.Accept ? renderIcon(Codicon.keyboardTab) : renderIcon(Codicon.arrowRight))
+				this._tabAction.map(v => v === InlineEditTabAction.Accept ? renderIcon(Codicon.keyboardTab) : renderIcon(Codicon.arrowRight))
 			])
 		]),
 	])).keepUpdated(this._store);

@@ -3,7 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import { $, getWindow, n } from '../../../../../../../base/browser/dom.js';
+import { IMouseEvent, StandardMouseEvent } from '../../../../../../../base/browser/mouseEvent.js';
 import { Color } from '../../../../../../../base/common/color.js';
+import { Emitter } from '../../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../../base/common/lifecycle.js';
 import { IObservable, IReader, autorun, constObservable, derived, derivedObservableWithCache, observableFromEvent } from '../../../../../../../base/common/observable.js';
 import { IInstantiationService } from '../../../../../../../platform/instantiation/common/instantiation.js';
@@ -21,7 +23,7 @@ import { Range } from '../../../../../../common/core/range.js';
 import { ITextModel } from '../../../../../../common/model.js';
 import { StickyScrollController } from '../../../../../stickyScroll/browser/stickyScrollController.js';
 import { InlineCompletionContextKeys } from '../../../controller/inlineCompletionContextKeys.js';
-import { IInlineEditsView, IInlineEditsViewHost } from '../inlineEditsViewInterface.js';
+import { IInlineEditsView, InlineEditTabAction } from '../inlineEditsViewInterface.js';
 import { InlineEditWithChanges } from '../inlineEditWithChanges.js';
 import { getModifiedBorderColor, getOriginalBorderColor, modifiedBackgroundColor, originalBackgroundColor } from '../theme.js';
 import { PathBuilder, createRectangle, getOffsetForPos, mapOutFalsy, maxContentWidthInRange } from '../utils/utils.js';
@@ -50,6 +52,9 @@ export class InlineEditsSideBySideView extends Disposable implements IInlineEdit
 
 	private readonly _editorObs = observableCodeEditor(this._editor);
 
+	private readonly _onDidClick = this._register(new Emitter<IMouseEvent>());
+	readonly onDidClick = this._onDidClick.event;
+
 	constructor(
 		private readonly _editor: ICodeEditor,
 		private readonly _edit: IObservable<InlineEditWithChanges | undefined>,
@@ -59,7 +64,7 @@ export class InlineEditsSideBySideView extends Disposable implements IInlineEdit
 			newTextLineCount: number;
 			originalDisplayRange: LineRange;
 		} | undefined>,
-		private readonly _host: IInlineEditsViewHost,
+		private readonly _tabAction: IObservable<InlineEditTabAction>,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 		@IThemeService private readonly _themeService: IThemeService,
 	) {
@@ -118,10 +123,13 @@ export class InlineEditsSideBySideView extends Disposable implements IInlineEdit
 	private readonly previewRef = n.ref<HTMLDivElement>();
 
 	private readonly _editorContainer = n.div({
-		class: ['editorContainer', this._editorObs.getOption(EditorOption.inlineSuggest).map(v => !v.edits.useGutterIndicator && 'showHover')],
+		class: ['editorContainer'],
 		style: { position: 'absolute', overflow: 'hidden', cursor: 'pointer' },
-		onclick: () => {
-			this._host.accept();
+		onmousedown: e => {
+			e.preventDefault(); // This prevents that the editor loses focus
+		},
+		onclick: (e) => {
+			this._onDidClick.fire(new StandardMouseEvent(getWindow(e), e));
 		}
 	}, [
 		n.div({ class: 'preview', style: { pointerEvents: 'none' }, ref: this.previewRef }),
@@ -500,8 +508,8 @@ export class InlineEditsSideBySideView extends Disposable implements IInlineEdit
 		const layoutInfoObs = mapOutFalsy(this._previewEditorLayoutInfo).read(reader);
 		if (!layoutInfoObs) { return undefined; }
 
-		const modifiedBorderColor = getModifiedBorderColor(this._host.tabAction).read(reader);
-		const originalBorderColor = getOriginalBorderColor(this._host.tabAction).read(reader);
+		const modifiedBorderColor = getModifiedBorderColor(this._tabAction).read(reader);
+		const originalBorderColor = getOriginalBorderColor(this._tabAction).read(reader);
 
 		return [
 			n.svgElem('path', {

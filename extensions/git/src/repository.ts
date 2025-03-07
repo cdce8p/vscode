@@ -23,7 +23,7 @@ import { IPushErrorHandlerRegistry } from './pushError';
 import { IRemoteSourcePublisherRegistry } from './remotePublisher';
 import { StatusBarCommands } from './statusbar';
 import { toGitUri } from './uri';
-import { anyEvent, combinedDisposable, debounceEvent, dispose, EmptyDisposable, eventToPromise, filterEvent, find, getCommitShortHash, IDisposable, isDescendant, isRemote, Limiter, onceEvent, pathEquals, relativePath } from './util';
+import { anyEvent, combinedDisposable, debounceEvent, dispose, EmptyDisposable, eventToPromise, filterEvent, find, getCommitShortHash, IDisposable, isDescendant, isLinuxSnap, isRemote, Limiter, onceEvent, pathEquals, relativePath } from './util';
 import { IFileWatcher, watch } from './watch';
 import { detectEncoding } from './encoding';
 import { ISourceControlHistoryItemDetailsProviderRegistry } from './historyItemDetailsProvider';
@@ -1361,7 +1361,7 @@ export class Repository implements Disposable {
 
 	async clean(resources: Uri[]): Promise<void> {
 		const config = workspace.getConfiguration('git');
-		const untrackedChangesSoftDelete = config.get<boolean>('untrackedChangesSoftDelete', true) && !isRemote;
+		const discardUntrackedChangesToTrash = config.get<boolean>('discardUntrackedChangesToTrash', true) && !isRemote && !isLinuxSnap;
 
 		await this.run(
 			Operation.Clean(!this.optimisticUpdateEnabled()),
@@ -1400,7 +1400,7 @@ export class Repository implements Disposable {
 					}
 				});
 
-				if (untrackedChangesSoftDelete) {
+				if (discardUntrackedChangesToTrash) {
 					const limiter = new Limiter<void>(5);
 					await Promise.all(toClean.map(fsPath => limiter.queue(
 						async () => await workspace.fs.delete(Uri.file(fsPath), { useTrash: true }))));
@@ -1533,7 +1533,11 @@ export class Repository implements Disposable {
 		try {
 			const mergeBase = await this.getConfig(mergeBaseConfigKey);
 			const branchFromConfig = mergeBase !== '' ? await this.getBranch(mergeBase) : undefined;
-			if (branchFromConfig) {
+
+			// There was a brief period of time when we would consider local branches as a valid
+			// merge base. Since then we have fixed the issue and only remote branches can be used
+			// as a merge base so we are adding an additional check.
+			if (branchFromConfig && branchFromConfig.remote) {
 				return branchFromConfig;
 			}
 		} catch (err) { }

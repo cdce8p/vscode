@@ -237,7 +237,7 @@ export class HoverService extends Disposable implements IHoverService {
 			// Only clear the current options if it's the current hover, the current options help
 			// reduce flickering when the same hover is shown multiple times
 			if (getHoverOptionsIdentity(this._currentHoverOptions) === getHoverOptionsIdentity(options)) {
-				this._currentHoverOptions = undefined;
+				this.doHideHover();
 			}
 			hoverDisposables.dispose();
 		}, undefined, hoverDisposables);
@@ -291,8 +291,8 @@ export class HoverService extends Disposable implements IHoverService {
 		);
 	}
 
-	hideHover(): void {
-		if (this._currentHover?.isLocked || !this._currentHoverOptions) {
+	hideHover(force?: boolean): void {
+		if ((!force && this._currentHover?.isLocked) || !this._currentHoverOptions) {
 			return;
 		}
 		this.doHideHover();
@@ -440,7 +440,7 @@ export class HoverService extends Disposable implements IHoverService {
 				return; // Do not show hover when the mouse is over another hover target
 			}
 
-			mouseOverStore.add(triggerShowHover(hoverDelegate.delay, false, target));
+			mouseOverStore.add(triggerShowHover(typeof hoverDelegate.delay === 'function' ? hoverDelegate.delay(content) : hoverDelegate.delay, false, target));
 		}, true));
 
 		const onFocus = () => {
@@ -454,7 +454,7 @@ export class HoverService extends Disposable implements IHoverService {
 			const toDispose: DisposableStore = new DisposableStore();
 			const onBlur = () => hideHover(true, true);
 			toDispose.add(addDisposableListener(targetElement, EventType.BLUR, onBlur, true));
-			toDispose.add(triggerShowHover(hoverDelegate.delay, false, target));
+			toDispose.add(triggerShowHover(typeof hoverDelegate.delay === 'function' ? hoverDelegate.delay(content) : hoverDelegate.delay, false, target));
 			hoverPreparation = toDispose;
 		};
 

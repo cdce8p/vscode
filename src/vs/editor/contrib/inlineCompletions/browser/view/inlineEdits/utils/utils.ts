@@ -26,12 +26,6 @@ import { SingleTextEdit, TextEdit } from '../../../../../../common/core/textEdit
 import { RangeMapping } from '../../../../../../common/diff/rangeMapping.js';
 import { indentOfLine } from '../../../../../../common/model/textModel.js';
 
-export enum InlineEditTabAction {
-	Jump = 'jump',
-	Accept = 'accept',
-	Inactive = 'inactive'
-}
-
 export function maxContentWidthInRange(editor: ObservableCodeEditor, range: LineRange, reader: IReader | undefined): number {
 	editor.layoutInfo.read(reader);
 	editor.value.read(reader);
@@ -81,10 +75,22 @@ export function getPrefixTrim(diffRanges: Range[], originalLinesRange: LineRange
 
 	const replacementStart = diffRanges.map(r => r.isSingleLine() ? r.startColumn - 1 : 0);
 	const originalIndents = originalLinesRange.mapToLineArray(line => indentOfLine(textModel.getLineContent(line)));
-	const modifiedIndents = modifiedLines.map(line => indentOfLine(line));
+	const modifiedIndents = modifiedLines.filter(line => line !== '').map(line => indentOfLine(line));
 	const prefixTrim = Math.min(...replacementStart, ...originalIndents, ...modifiedIndents);
 
-	const prefixLeftOffset = editor.getOffsetForColumn(originalLinesRange.startLineNumber, prefixTrim + 1);
+	let prefixLeftOffset;
+	const startLineIndent = textModel.getLineIndentColumn(originalLinesRange.startLineNumber);
+	if (startLineIndent >= prefixTrim + 1) {
+		// We can use the editor to get the offset
+		prefixLeftOffset = editor.getOffsetForColumn(originalLinesRange.startLineNumber, prefixTrim + 1);
+	} else if (startLineIndent !== 1) {
+		// We need to approximate the offset as the editor does not contain the modified lines yet
+		const startLineIndentOffset = editor.getOffsetForColumn(originalLinesRange.startLineNumber, startLineIndent);
+		prefixLeftOffset = startLineIndentOffset / (startLineIndent - 1) * prefixTrim;
+	} else {
+		// unable to approximate the offset
+		return { prefixTrim: 0, prefixLeftOffset: 0 };
+	}
 
 	return { prefixTrim, prefixLeftOffset };
 }
